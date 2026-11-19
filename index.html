@@ -145,6 +145,15 @@ textarea.short{min-height:72px}
 .sheet{background:var(--card);border-radius:20px;padding:28px 22px;max-width:380px;width:100%;text-align:center;display:flex;flex-direction:column;gap:14px;align-items:center}
 .sheet .hello{margin:0;font-size:1.15rem}
 .sheet .k{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.dice-rows{display:grid;gap:8px}
+.dice-row{display:grid;grid-template-columns:76px auto 1fr 38px;gap:8px;align-items:center}
+.dr-x{color:var(--muted);font-size:.9rem}
+.dr-del{width:38px;height:38px;border-radius:50%;border:1.5px solid var(--line);background:transparent;color:var(--muted);font-size:1.2rem;line-height:1;cursor:pointer}
+.dr-del:hover{border-color:var(--accent);color:var(--accent)}
+.dr-del[hidden]{display:block;visibility:hidden}
+.dice-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:4px}
+.dgroup+.dgroup{margin-top:16px}
+.dgroup h4{margin:0 0 8px;font-size:.85rem;color:var(--muted);font-weight:500;font-family:"IBM Plex Mono",monospace}
 footer{margin-top:28px;color:var(--muted);font-size:.8rem;text-align:center}
 @media (max-width:540px){
   .fields{grid-template-columns:1fr}
@@ -297,26 +306,43 @@ const MODES = [
   },
   {
     id: 'dados', icon: '🎲', label: 'Dados',
-    title: 'Lanzamiento de dados', desc: 'Elige cuántos dados y de cuántas caras.',
-    fields: () => F.num('dice-n', '¿Cuántos dados?', 2, 'min="1" max="100"', '1 a 100') +
-      F.select('dice-f', 'Caras por dado', [4,6,8,10,12,20,100].map(f => [f, `d${f} (${f} caras)`]), 6),
+    title: 'Lanzamiento de dados', desc: 'Elige cuántos dados y de cuántas caras. Con “+ Agregar dados” puedes combinar tipos, por ejemplo 2 de 6 caras + 1 de 10.',
+    fields: () => `<div class="field full"><label>Dados a lanzar <span class="hint">· hasta 100 en total</span></label>
+      <div class="dice-rows" id="dice-rows"></div>
+      <div class="dice-foot"><button type="button" class="btn small" id="dice-add">+ Agregar dados</button><span class="count" id="dice-notation"></span></div></div>`,
     run(){
-      const n = int('dice-n'), f = parseInt($('#dice-f').value, 10);
-      if (!(n >= 1 && n <= 100)) fail('Escribe un número de dados entre 1 y 100.');
-      const r = Array.from({length:n}, () => rnd(f) + 1);
-      const sum = r.reduce((a, b) => a + b, 0);
-      if (n === 1){
-        return { html: `<div class="hero">${dieHTML(r[0], f, 0, true)}<div class="hero-txt pop" style="--i:3">${r[0]}</div><div class="hero-sub">d${f}</div></div>`, text: `1d${f}: ${r[0]}` };
+      const rows = diceRows();
+      if (!rows.length) fail('Agrega al menos un tipo de dado.');
+      for (const r of rows) if (!(r.n >= 1 && r.n <= 100)) fail('Cada cantidad de dados debe estar entre 1 y 100.');
+      const totalDice = rows.reduce((a, r) => a + r.n, 0);
+      if (totalDice > 100) fail(`Son ${totalDice} dados; el máximo es 100 en total.`);
+      const groups = rows.map(r => {
+        const vals = Array.from({length:r.n}, () => rnd(r.f) + 1);
+        return { n: r.n, f: r.f, vals, sum: vals.reduce((a, b) => a + b, 0) };
+      });
+      const total = groups.reduce((a, g) => a + g.sum, 0);
+      const notation = groups.map(g => `${g.n}d${g.f}`).join(' + ');
+
+      if (totalDice === 1){
+        const g = groups[0];
+        return { html: `<div class="hero">${dieHTML(g.vals[0], g.f, 0, true)}<div class="hero-txt pop" style="--i:3">${g.vals[0]}</div><div class="hero-sub">d${g.f}</div></div>`, text: `1d${g.f}: ${g.vals[0]}` };
       }
-      let html = stats([['Suma', sum], ['Promedio', (sum / n).toFixed(2)], ['Mayor', Math.max(...r)], ['Menor', Math.min(...r)]]) +
-                 `<div class="dice">${r.map((v, i) => dieHTML(v, f, i)).join('')}</div>`;
-      if (f <= 20){
-        const cnt = Array(f).fill(0); r.forEach(v => cnt[v - 1]++);
-        const mx = Math.max(...cnt);
-        html += `<div class="freq"><div class="ttl">Frecuencia</div>${cnt.map((c, i) =>
-          `<div class="fr"><span>${i + 1}</span><div class="bar"><i style="width:${mx ? 100 * c / mx : 0}%"></i></div><span>${c}</span></div>`).join('')}</div>`;
+      if (groups.length === 1){
+        const { n, f, vals: r, sum } = groups[0];
+        let html = stats([['Suma', sum], ['Promedio', (sum / n).toFixed(2)], ['Mayor', Math.max(...r)], ['Menor', Math.min(...r)]]) +
+                   `<div class="dice">${r.map((v, i) => dieHTML(v, f, i)).join('')}</div>`;
+        if (f <= 20){
+          const cnt = Array(f).fill(0); r.forEach(v => cnt[v - 1]++);
+          const mx = Math.max(...cnt);
+          html += `<div class="freq"><div class="ttl">Frecuencia</div>${cnt.map((c, i) =>
+            `<div class="fr"><span>${i + 1}</span><div class="bar"><i style="width:${mx ? 100 * c / mx : 0}%"></i></div><span>${c}</span></div>`).join('')}</div>`;
+        }
+        return { html, text: `${n}d${f}: ${r.join(', ')} (suma ${sum})` };
       }
-      return { html, text: `${n}d${f}: ${r.join(', ')} (suma ${sum})` };
+      let k = 0;
+      const html = stats([['Total', total], ['Dados', totalDice], ['Tirada', notation]]) +
+        groups.map(g => `<div class="dgroup"><h4>${g.n}d${g.f} · suma ${g.sum}</h4><div class="dice">${g.vals.map(v => dieHTML(v, g.f, k++)).join('')}</div></div>`).join('');
+      return { html, text: `${notation} = ${total}\n` + groups.map(g => `${g.n}d${g.f}: ${g.vals.join(', ')} (suma ${g.sum})`).join('\n') };
     }
   },
   {
@@ -486,7 +512,7 @@ function updateCount(ta){
 }
 fieldsEl.querySelectorAll('textarea').forEach(ta => { updateCount(ta); ta.addEventListener('input', () => updateCount(ta)); });
 // En los campos numéricos, al entrar se selecciona el valor para escribir encima sin borrar
-fieldsEl.querySelectorAll('input[type=number]').forEach(inp => inp.addEventListener('focus', () => { try { inp.select(); } catch (_) {} }));
+fieldsEl.addEventListener('focusin', e => { if (e.target.matches('input[type=number]')) { try { e.target.select(); } catch (_) {} } });
 
 function setMode(id){
   const m = MODES.find(x => x.id === id) || MODES[0];
@@ -530,6 +556,41 @@ resEl.addEventListener('click', async e => {
   catch (_) { b.textContent = 'No se pudo copiar'; }
   setTimeout(() => { b.textContent = 'Copiar'; }, 1600);
 });
+
+// ---------- dados: filas dinámicas ----------
+const DICE_FACES = [4, 6, 8, 10, 12, 20, 100];
+const diceRowsEl = $('#dice-rows');
+function diceRows(){
+  return [...diceRowsEl.querySelectorAll('.dice-row')].map(r => {
+    const v = r.querySelector('.dr-n').value.trim();
+    return { n: /^\d+$/.test(v) ? parseInt(v, 10) : NaN, f: parseInt(r.querySelector('.dr-f').value, 10) };
+  });
+}
+function refreshDice(){
+  const rows = diceRowsEl.querySelectorAll('.dice-row');
+  rows.forEach(r => { r.querySelector('.dr-del').hidden = rows.length === 1; });
+  $('#dice-add').hidden = rows.length >= 10;
+  $('#dice-notation').textContent = 'Tirada: ' + diceRows().map(r => `${isNaN(r.n) ? '?' : r.n}d${r.f}`).join(' + ');
+}
+function addDiceRow(n, f){
+  if (diceRowsEl.children.length >= 10) return;
+  const row = document.createElement('div');
+  row.className = 'dice-row';
+  row.innerHTML = `<input type="number" inputmode="numeric" class="dr-n" value="${n}" min="1" max="100" aria-label="Cantidad de dados">
+    <span class="dr-x">de</span>
+    <select class="dr-f" aria-label="Caras">${DICE_FACES.map(x => `<option value="${x}"${x === f ? ' selected' : ''}>${x} caras (d${x})</option>`).join('')}</select>
+    <button type="button" class="dr-del" aria-label="Quitar este tipo de dado">×</button>`;
+  diceRowsEl.appendChild(row);
+  refreshDice();
+}
+$('#dice-add').addEventListener('click', () => addDiceRow(1, 6));
+diceRowsEl.addEventListener('click', e => {
+  const b = e.target.closest('.dr-del');
+  if (b){ b.closest('.dice-row').remove(); refreshDice(); }
+});
+diceRowsEl.addEventListener('input', refreshDice);
+diceRowsEl.addEventListener('change', refreshDice);
+addDiceRow(2, 6);
 
 // ---------- amigo secreto: revelar en privado ----------
 const rv = { box: $('#reveal'), name: $('#rv-name'), warn: $('#rv-warn'), show: $('#rv-show'), res: $('#rv-res'), target: $('#rv-target'), close: $('#rv-close') };

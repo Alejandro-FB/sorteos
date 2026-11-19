@@ -1,7 +1,7 @@
 // Service worker de "Sorteos al azar"
 // Cada vez que modifiques index.html u otro archivo, sube el número de versión
 // para que los dispositivos que ya la instalaron descarguen la nueva versión.
-const VERSION = 'sorteos-v3';
+const VERSION = 'sorteos-v4';
 const FONT_CACHE = 'sorteos-fuentes';
 
 const ARCHIVOS = [
