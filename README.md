@@ -1,6 +1,6 @@
 # Sorteos al azar
 
-Aplicación web para hacer sorteos: lanzamiento de monedas (águila o sol), dados, reparto de elementos en partes iguales, selección de ganadores, formación de equipos, números aleatorios y orden aleatorio.
+Aplicación web para hacer sorteos: lanzamiento de monedas (águila o sol), dados, reparto de elementos en partes iguales, selección de ganadores, formación de equipos, números aleatorios, orden aleatorio e intercambio (amigo secreto).
 
 - Funciona en cualquier navegador, en computadora o celular.
 - Se puede instalar como aplicación y usar sin conexión.

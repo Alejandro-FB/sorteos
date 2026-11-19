@@ -19,13 +19,13 @@
 :root{
   --bg:#f6f2ea; --card:#fffdf8; --ink:#1d1b16; --muted:#6b665b; --line:#e2dbcc;
   --accent:#d6492a; --accent-ink:#fff; --soft:#efe6d6;
-  --heads:#c4922a; --tails:#3b6d9e;
+  --heads:#c4922a; --tails:#3b6d9e; --good:#2f7d5b;
 }
 @media (prefers-color-scheme:dark){
   :root{
     --bg:#15140f; --card:#1f1d16; --ink:#f1ede3; --muted:#a39c8c; --line:#363226;
     --accent:#ff7a4d; --accent-ink:#1a0f0a; --soft:#2a261a;
-    --heads:#d9a842; --tails:#5f93c9;
+    --heads:#d9a842; --tails:#5f93c9; --good:#5fbf8f;
   }
 }
 *{box-sizing:border-box}
@@ -131,6 +131,20 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
 
 .install{margin-top:20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 16px;border:1.5px dashed var(--line);border-radius:12px;font-size:.9rem;color:var(--muted)}
 .install[hidden]{display:none}
+.who{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.who-btn{font:inherit;font-weight:600;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer;text-align:left}
+.who-btn:hover{border-color:var(--muted)}
+.who-btn.seen{color:var(--muted)}
+.who-btn.seen::after{content:" ✓";color:var(--good)}
+.org{margin-top:18px}
+.org summary{cursor:pointer;color:var(--muted);font-size:.9rem}
+.org .rank{margin-top:10px}
+textarea.short{min-height:72px}
+.overlay{position:fixed;inset:0;background:rgba(20,18,12,.6);display:grid;place-items:center;padding:16px;z-index:10;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.overlay[hidden]{display:none}
+.sheet{background:var(--card);border-radius:20px;padding:28px 22px;max-width:380px;width:100%;text-align:center;display:flex;flex-direction:column;gap:14px;align-items:center}
+.sheet .hello{margin:0;font-size:1.15rem}
+.sheet .k{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
 footer{margin-top:28px;color:var(--muted);font-size:.8rem;text-align:center}
 @media (max-width:540px){
   .fields{grid-template-columns:1fr}
@@ -167,6 +181,19 @@ footer{margin-top:28px;color:var(--muted);font-size:.8rem;text-align:center}
   </div>
 
   <footer>Los resultados usan el generador aleatorio criptográfico del navegador (crypto.getRandomValues).</footer>
+</div>
+
+<div class="overlay" id="reveal" hidden role="dialog" aria-modal="true" aria-labelledby="rv-name">
+  <div class="sheet">
+    <p class="hello">Hola, <b id="rv-name"></b></p>
+    <p class="hint" id="rv-warn"></p>
+    <button class="btn primary" id="rv-show">Ver a quién le regalo</button>
+    <div id="rv-res" hidden>
+      <div class="k">Le regalas a</div>
+      <div class="hero-txt pop" id="rv-target"></div>
+    </div>
+    <button class="btn" id="rv-close">Cancelar</button>
+  </div>
 </div>
 
 <script>
@@ -389,11 +416,56 @@ const MODES = [
       const s = shuffle(L);
       return { html: rankHTML(s, 1), text: s.map((x, i) => `${i + 1}. ${x}`).join('\n') };
     }
+  },
+  {
+    id: 'intercambio', icon: '🎁', label: 'Intercambio',
+    title: 'Intercambio', desc: 'A cada persona le toca alguien distinto de sí misma. Después del sorteo, cada quien toca su nombre para ver en privado a quién le regala.',
+    fields: () => F.list('as-list', 'Participantes', 'Ana\nBeto\nCarla\nDiego\nElena\nFer\nGaby\nHugo', ['participante','participantes']) +
+      `<div class="field full"><label for="as-excl">Parejas que no deben tocarse <span class="hint">· opcional, una pareja por línea, separada con /</span></label>
+       <textarea id="as-excl" class="short" placeholder="Ejemplo: Ana / Beto"></textarea></div>` +
+      F.check('as-chain', 'Formar una sola cadena: A le regala a B, B a C… y el último a A (así nadie se regala mutuamente)', false),
+    run(){
+      const L = list('as-list');
+      if (L.length < 3) fail('Se necesitan al menos 3 participantes.');
+      const key = x => x.toLocaleLowerCase('es');
+      const seen = new Set();
+      for (const x of L){
+        if (seen.has(key(x))) fail(`El nombre “${x}” está repetido. Agrega una inicial o apellido para distinguirlos.`);
+        seen.add(key(x));
+      }
+      const banned = new Set();
+      for (const line of $('#as-excl').value.split('\n')){
+        if (!line.trim()) continue;
+        const parts = line.split(/\s*[\/,–—]\s*|\s+-\s+|\s+y\s+/i).map(s => s.trim()).filter(Boolean);
+        if (parts.length !== 2) fail(`No entendí la línea “${line.trim()}”. Escríbela como: Ana / Beto`);
+        for (const p of parts) if (!seen.has(key(p))) fail(`“${p}” no está en la lista de participantes.`);
+        banned.add(key(parts[0]) + '|' + key(parts[1]));
+        banned.add(key(parts[1]) + '|' + key(parts[0]));
+      }
+      const n = L.length, chain = checked('as-chain');
+      const ok = (g, r) => g !== r && !banned.has(key(g) + '|' + key(r));
+      let rec = null;
+      for (let t = 0; t < 20000 && !rec; t++){
+        const perm = shuffle(L);
+        let cand;
+        if (chain){ const m = new Map(); perm.forEach((x, i) => m.set(x, perm[(i + 1) % n])); cand = L.map(x => m.get(x)); }
+        else cand = perm;
+        if (L.every((g, i) => ok(g, cand[i]))) rec = cand;
+      }
+      if (!rec) fail('Con esas restricciones no hay una asignación posible. Quita alguna pareja de la lista.');
+      secret = { givers: L, receivers: rec, seen: new Set() };
+      return {
+        html: `<p class="note">Sorteo listo para ${n} participantes. Pasa el dispositivo: cada persona toca su nombre, ve a quién le regala y lo vuelve a ocultar.</p>
+          <div class="who">${L.map((x, i) => `<button class="who-btn pop" data-i="${i}" style="--i:${i}">${esc(x)}</button>`).join('')}</div>
+          <details class="org"><summary>Ver todas las asignaciones (solo el organizador)</summary>${rankHTML(L.map((g, i) => `${g} → ${rec[i]}`), 0)}</details>`,
+        text: 'Intercambio\n' + L.map((g, i) => `${g} → ${rec[i]}`).join('\n')
+      };
+    }
   }
 ];
 
 // ---------- interfaz ----------
-let current = MODES[0], lastText = '';
+let current = MODES[0], lastText = '', secret = null, rvIndex = -1;
 const modesEl = $('#modes'), fieldsEl = $('#p-fields'), resEl = $('#results'), errEl = $('#err');
 
 modesEl.innerHTML = MODES.map(m =>
@@ -425,6 +497,7 @@ function setMode(id){
   $('#p-desc').textContent = m.desc;
   errEl.textContent = '';
   resEl.hidden = true;
+  closeReveal();
 }
 modesEl.addEventListener('click', e => {
   const b = e.target.closest('.mode'); if (!b) return;
@@ -434,6 +507,7 @@ modesEl.addEventListener('click', e => {
 
 function go(){
   errEl.textContent = '';
+  secret = null;
   try {
     const out = current.run();
     lastText = out.text;
@@ -455,6 +529,42 @@ resEl.addEventListener('click', async e => {
   try { await navigator.clipboard.writeText(lastText); b.textContent = '¡Copiado!'; }
   catch (_) { b.textContent = 'No se pudo copiar'; }
   setTimeout(() => { b.textContent = 'Copiar'; }, 1600);
+});
+
+// ---------- amigo secreto: revelar en privado ----------
+const rv = { box: $('#reveal'), name: $('#rv-name'), warn: $('#rv-warn'), show: $('#rv-show'), res: $('#rv-res'), target: $('#rv-target'), close: $('#rv-close') };
+function openReveal(i){
+  if (!secret) return;
+  rvIndex = i;
+  rv.name.textContent = secret.givers[i];
+  rv.warn.textContent = secret.seen.has(i)
+    ? 'Ya habías visto tu resultado. Asegúrate de que nadie más vea la pantalla.'
+    : 'Asegúrate de que nadie más vea la pantalla.';
+  rv.res.hidden = true; rv.show.hidden = false;
+  rv.close.textContent = 'Cancelar';
+  rv.box.hidden = false;
+  rv.show.focus();
+}
+function closeReveal(){
+  if (!rv.box || rv.box.hidden) return;
+  rv.box.hidden = true;
+  rv.target.textContent = '';
+  if (secret && rvIndex >= 0 && !rv.res.hidden){
+    secret.seen.add(rvIndex);
+    const b = resEl.querySelector(`.who-btn[data-i="${rvIndex}"]`);
+    if (b) b.classList.add('seen');
+  }
+  rvIndex = -1;
+}
+rv.show.addEventListener('click', () => {
+  rv.target.textContent = secret.receivers[rvIndex];
+  rv.res.hidden = false; rv.show.hidden = true;
+  rv.close.textContent = 'Ocultar y pasar';
+});
+rv.close.addEventListener('click', closeReveal);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeReveal(); });
+resEl.addEventListener('click', e => {
+  const b = e.target.closest('.who-btn'); if (b) openReveal(+b.dataset.i);
 });
 
 function fromHash(){ setMode(location.hash.slice(1)); }

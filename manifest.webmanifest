@@ -1,7 +1,7 @@
 {
   "name": "Sorteos al azar",
   "short_name": "Sorteos",
-  "description": "Monedas, dados, reparto en partes iguales, ganadores, equipos, números y orden aleatorio.",
+  "description": "Monedas, dados, reparto en partes iguales, ganadores, equipos, números, orden aleatorio e intercambio (amigo secreto).",
   "lang": "es-MX",
   "start_url": "./",
   "scope": "./",
